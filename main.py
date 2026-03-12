@@ -162,7 +162,8 @@ def main():
     model = MultiHeadVesselUNet(
         in_channels=CONFIG["in_channels"],
         out_channels_fine=CONFIG["out_channels_fine"],
-        out_channels_reg=CONFIG["out_channels_reg"]
+        out_channels_reg=CONFIG["out_channels_reg"],
+        out_channels_bin=CONFIG["out_channels_bin"]
     ).to(device)
 
     total_params = sum(p.numel() for p in model.parameters())
