@@ -6,7 +6,7 @@ from typing import Tuple, List
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, Spacingd,
     Orientationd, ScaleIntensityd, RandCropByPosNegLabeld,
-    Lambdad, EnsureTyped, CastToTyped
+    Lambdad, EnsureTyped, CastToTyped, CopyItemsd
 )
 from monai.data import Dataset, DataLoader, CacheDataset
 
@@ -146,16 +146,16 @@ def get_vessel_loader(image_dir: str,
 
     # 如果没有预生成的标签,动态生成
     if "label_bin" not in data_dicts[0]:
-        transforms_list.append(
-            Lambdad(keys="label_fine", func=lambda x: (x > 0).float(),
-                   overwrite=False, new_key_name="label_bin")
-        )
+        transforms_list.extend([
+            CopyItemsd(keys=["label_fine"], times=1, names=["label_bin"]),
+            Lambdad(keys=["label_bin"], func=lambda x: (x > 0).float()),
+        ])
 
     if "label_reg" not in data_dicts[0]:
-        transforms_list.append(
-            Lambdad(keys="label_fine", func=create_regional_label,
-                   overwrite=False, new_key_name="label_reg")
-        )
+        transforms_list.extend([
+            CopyItemsd(keys=["label_fine"], times=1, names=["label_reg"]),
+            Lambdad(keys=["label_reg"], func=create_regional_label),
+        ])
 
     # 训练模式:随机裁剪
     if is_train:

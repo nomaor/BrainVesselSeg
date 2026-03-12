@@ -1,15 +1,34 @@
-import torch
 from torch.optim import Adam
-from monai.losses import DiceLoss, DiceCELoss
-import torch.nn.functional as F
+from monai.losses import DiceCELoss
 
 def train_one_epoch(model, loader, optimizer, device, epoch):
     model.train()
-    
-    # 定义基础损失函数
-    dice_loss_func = DiceLoss(smooth_nr=1e-5, smooth_dr=1e-5, to_onehot_y=True, softmax=True)
-    ce_loss_func = torch.nn.CrossEntropyLoss()
-    
+
+    # 统一使用 DiceCELoss，但各输出头权重可配置
+    loss_bin_func = DiceCELoss(
+        include_background=True,
+        to_onehot_y=True,
+        softmax=True,
+        lambda_dice=0.5,  # Binary 任务 Dice 权重
+        lambda_ce=0.5     # Binary 任务 CE 权重
+    )
+
+    loss_reg_func = DiceCELoss(
+        include_background=True,
+        to_onehot_y=True,
+        softmax=True,
+        lambda_dice=0.6,  # Regional 任务 Dice 权重
+        lambda_ce=0.4     # Regional 任务 CE 权重
+    )
+
+    loss_fine_func = DiceCELoss(
+        include_background=True,
+        to_onehot_y=True,
+        softmax=True,
+        lambda_dice=0.7,  # Fine-grained 任务 Dice 权重（更重视重叠度）
+        lambda_ce=0.3     # Fine-grained 任务 CE 权重
+    )
+
     # 动态调整权重 (调度策略)
     # 前 20 个 epoch 重点练二值化，之后重点练 42 类
     if epoch < 20:
@@ -31,21 +50,14 @@ def train_one_epoch(model, loader, optimizer, device, epoch):
         # 模型前向传播
         out_bin, out_reg, out_fine = model(inputs)
 
-        # 1. Binary Loss (使用 BCE 或 Dice)
-        # 这里的 target_bin 通常是 [B, 1, H, W, D]，值为 0 或 1
-        loss_bin = F.binary_cross_entropy(out_bin, target_bin.float())
-
-        # 2. Regional Loss
-        # target_reg 值为 0-5
-        loss_reg = ce_loss_func(out_reg, target_reg.squeeze(1).long())
-
-        # 3. Fine-grained Loss (42类)
-        # 推荐使用 DiceCELoss 或在 Dice 中加入对 Side-road 类别的加权
-        loss_fine = dice_loss_func(out_fine, target_fine)
+        # 统一使用 DiceCELoss
+        loss_bin = loss_bin_func(out_bin, target_bin)
+        loss_reg = loss_reg_func(out_reg, target_reg)
+        loss_fine = loss_fine_func(out_fine, target_fine)
 
         # 总损失同步回传
         total_loss = w_bin * loss_bin + w_reg * loss_reg + w_fine * loss_fine
-        
+
         total_loss.backward()
         optimizer.step()
 
